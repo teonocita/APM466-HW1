@@ -1,0 +1,172 @@
+---
+title: "APM466 HW1"
+author: "Teo Nocita"
+header-includes:
+   - \usepackage[labelformat = empty]{caption}
+date: "2023-01-24"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+#input bond data and calculate number of coupons for each bond and dirty prices
+bond_clean_prices <- matrix(c(99.71,97.8,97.93,96.48,95.38,92.74,91.08,92.72,93.14,99.1,102.73,99.7,97.801,97.87,96.45,95.42,92.75,91.19,92.84,93.25,99.22,102.84,99.72,97.833,97.95,96.58,95.61,93.03,91.43,93.24,93.73,99.71,103.4,99.72,97.841,97.92,96.5,95.59,93.03,91.51,93.29,93.78,99.71,103.38,99.74,97.828,97.87,96.4,95.44,92.87,91.32,92.95,93.39,99.24,102.83,99.75,97.845,97.86,96.4,95.38,92.82,91.23,92.9,93.33,99.14,102.73,99.76,97.866,97.87,96.39,95.34,92.81,91.21,92.91,93.35,99.15,102.77,99.77,97.903,97.92,96.47,95.47,92.97,91.41,93.05,93.5,99.29,102.92,99.78,97.909,97.92,96.48,95.5,93,91.45,93.04,93.46,99.24,102.82,99.79,97.903,97.84,96.29,95.3,92.72,91.17,92.77,93.14,98.86,102.4),nrow=10,ncol=11,byrow=TRUE)
+bond_coupons <- c(0.0175,0.0025,0.0225,0.0150,0.0125,0.0050,0.0025,0.0100,0.0125,0.0275,0.0350)
+bond_maturities <- c(1.5/12,6.5/12,13.5/12,19.5/12,25.5/12,31.5/12,37.5/12,43.5/12,49.5/12,55.5/12,61.5/12)
+n_coupons <- bond_maturities%/%0.5+1
+bond_dirty_prices <- matrix(rep(0,110),nrow=10,ncol=11)
+for (i in 1:nrow(bond_clean_prices)){
+  for (j in 1:ncol(bond_clean_prices)) {
+    dirty_price <- bond_clean_prices[i,j] + (bond_coupons[j]*100)*(0.5-bond_maturities[j]%%0.5)
+    bond_dirty_prices[i,j] <- dirty_price
+  }
+}
+```
+
+```{r}
+#function to generate a matrix of bond cashflows for a given day
+generate_cashflows <- function(i) {
+  bond_cashflows <- matrix(data=rep(0,11*12),nrow=11, ncol=12)
+  bond_cashflows[,1] <- -bond_dirty_prices[i,]
+  
+  for (j in 1:ncol(bond_clean_prices)) {
+    for (k in 1:n_coupons[j]) {
+      if (k == n_coupons[j]) {
+        bond_cashflows[j,1+k] <- bond_coupons[j]*50 + 100
+      } else {
+        bond_cashflows[j,1+k] <- bond_coupons[j]*50
+      }
+    }
+  }
+  return(bond_cashflows)
+}
+```
+
+
+
+```{r}
+#calculate bond yields
+library(tvm)
+yields <- matrix(rep(0,110),nrow=10,ncol=11)
+for (i in 1:nrow(bond_clean_prices)) {
+  bond_cashflows <- generate_cashflows(i)
+  bond_yields <- rep(0,11)
+  for (j in 1:ncol(bond_clean_prices)) {
+    #browser()
+    yield <- xirr(cf = bond_cashflows[j,1:(1+n_coupons[j])], tau=c(0,bond_maturities[1:n_coupons[j]]-(i-1)/365), comp_freq = Inf)
+    bond_yields[j] <- yield
+  }
+  yields[i,] <- bond_yields
+}
+```
+
+```{r}
+matplot(x=c(0,0.5,1,1.5,2,2.5,3,3.5,4,4.5,5),y=t(yields),type="l", col = colorRampPalette(c('red','blue'))(10), ylab = "Yield to Maturity", xlab="Years")
+legend("topright",legend = c('2023-01-16','2023-01-17','2023-01-18','2023-01-19','2023-01-20','2023-01-23','2023-01-24','2023-01-25','2023-01-26','2023-01-27'), fill = colorRampPalette(c('red','blue'))(10), cex=0.75)
+```
+
+
+```{r}
+#calculate spot rates
+spots <- matrix(rep(0,110),nrow=10,ncol=11)
+for (i in 1:nrow(bond_clean_prices)) {
+  bond_cashflows <- generate_cashflows(i)
+  spot_rates <- rep(0,11)
+  for (j in 1:ncol(bond_clean_prices)) {
+    for (k in 1:n_coupons[j]) {
+      if (k == n_coupons[j]) {
+        #browser()
+        spot <- xirr(cf=c(bond_cashflows[j,1],bond_cashflows[j,1+k]), tau=c(0,bond_maturities[k]-(i-1)/365), comp_freq = Inf)
+        spot_rates[j] <- spot
+      } else {
+        #browse()
+        bond_cashflows[j,1] <- bond_cashflows[j,1] + bond_cashflows[j,1+k]*exp(-spot_rates[k]*(bond_maturities[k]-(i-1)/365))
+      }
+    }
+  }
+  spots[i,] <- spot_rates
+}
+```
+
+```{r}
+matplot(x=c(0,0.5,1,1.5,2,2.5,3,3.5,4,4.5,5),y=t(spots),type="l", col = colorRampPalette(c('red','blue'))(10), ylab = "Spot Rate", xlab="Years")
+legend("topright",legend = c('2023-01-16','2023-01-17','2023-01-18','2023-01-19','2023-01-20','2023-01-23','2023-01-24','2023-01-25','2023-01-26','2023-01-27'), fill = colorRampPalette(c('red','blue'))(10), cex=0.75)
+```
+```{r}
+#caluclate 1 year forward rates
+fwds <- matrix(rep(0,70), nrow=10, ncol=7)
+for (i in 4:10) {
+  f <- (0.5*i*spots[,i+1]-spots[,3])/(0.5*i-1)
+  fwds[,i-3] <- f
+}
+```
+
+
+```{r}
+matplot(x=c(1,1.5,2,2.5,3,3.5,4), y=t(fwds), type='l', col = colorRampPalette(c('red','blue'))(10), ylab = "1 Year Forward Rate", xlab="Years")
+legend("topright",legend = c('2023-01-16','2023-01-17','2023-01-18','2023-01-19','2023-01-20','2023-01-23','2023-01-24','2023-01-25','2023-01-26','2023-01-27'), fill = colorRampPalette(c('red','blue'))(10), cex=0.75)
+```
+
+```{r}
+#calculate log returns of forwards
+log_returns_fwd <- matrix(rep(0,36),nrow=9,ncol=4)
+for (i in 1:4) {
+  x <- c()
+  for (j in 1:9) {
+  x <- append(x,log(fwds[j+1,2*i-1]/fwds[j,2*i-1]))
+  }
+  log_returns_fwd[,i] <- x
+}
+```
+
+```{r}
+#calculate log returns of yield for 1,2,3,4,5 years
+log_returns_yield <- matrix(rep(0,45),nrow=9,ncol=5)
+for (i in 1:5) {
+  x <- c()
+  for (j in 1:9) {
+  x <- append(x,log(yields[j+1,2*i+1]/yields[j,2*i+1]))
+  }
+  log_returns_yield[,i] <- x
+}
+```
+
+```{r}
+#create tables of covariance matrices for log returns of yields and forward rates
+library(knitr)
+cov_yield_returns <- cov(log_returns_yield)
+row.names(cov_yield_returns) <- c("1 Year Yield", "2 Year Yield", "3 Year Yield", "4 Year Yield", "5 Year Yield")
+cov_fwd_returns <- cov(log_returns_fwd)
+row.names(cov_fwd_returns) <- c("1yr-1yr Forward", "1yr-2yr Year Forward", "1yr-3yr Year Forward", "1yr-4yr Year Forward")
+
+kable(cov_yield_returns, format='latex', align='c', label=NA, escape=FALSE, col.names = c("1 Year Yield", "2 Year Yield", "3 Year Yield", "4 Year Yield", "5 Year Yield"), row.names = TRUE, caption = "Covariance Matrix Yield Returns")
+
+kable(cov_fwd_returns, format='latex', align='c', label=NA, escape=FALSE, col.names = c("1yr-1yr Forward", "1yr-2yr Year Forward", "1yr-3yr Year Forward", "1yr-4yr Year Forward"), row.names = TRUE, caption = "Covariance Matrix 1 Year Forward Returns")
+```
+
+
+```{r}
+#create tables of eigenvectors and eigenvalues for covariance matrices
+library(knitr)
+kable(t(eigen(cov(log_returns_yield))$values),format='latex', align='c', label=NA, escape=FALSE, col.names = c("$\\lambda_1$","$\\lambda_2$","$\\lambda_3$","$\\lambda_4$","$\\lambda_5$"), caption = "Eigenvalues Covariance Matrix Yield Returns")
+
+kable(t(eigen(cov(log_returns_fwd))$values),format='latex', align='c', label=NA, escape=FALSE, col.names = c("$\\lambda_1$","$\\lambda_2$","$\\lambda_3$","$\\lambda_4$"),caption = "Eigenvalues Covariance Matrix 1 Year Forward Returns")
+
+kable(eigen(cov(log_returns_yield))$vectors,format='latex', align='c', label=NA, escape=FALSE, col.names = c("$v_1$","$v_2$","$v_3$","$v_4$","$v_5$"), caption = "Eigenvectors Covariance Matrix Yield Returns")
+
+kable(eigen(cov(log_returns_fwd))$vectors,format='latex', align='c', label=NA, escape=FALSE,col.names = c("$v_1$","$v_2$","$v_3$","$v_4$"),caption = "Eigenvectors Covariance Matrix 1 Year Forward Returns")
+```
+
+
+
+
+
+
+
+
+
+
